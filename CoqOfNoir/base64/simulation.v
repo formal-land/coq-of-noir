@@ -135,6 +135,81 @@ Module Base64EncodeBE.
   *)
 End Base64EncodeBE.
 
+Module base64_encode_elements.
+  Module State.
+    Record t : Set := {
+      Base64Encoder : option Value.t;
+      result : option Value.t;
+    }.
+
+    Definition init : t := {|
+      Base64Encoder := None;
+      result := None;
+    |}.
+  End State.
+
+  Module Address.
+    Inductive t : Set :=
+    | Base64Encoder
+    | result.
+  End Address.
+
+  Global Instance Impl_State : State.Trait State.t Address.t := {
+    read state address :=
+      match address with
+      | Address.Base64Encoder => state.(State.Base64Encoder)
+      | Address.result => state.(State.result)
+      end;
+    alloc_write state address value :=
+      match address with
+      | Address.Base64Encoder => Some (state <| State.Base64Encoder := Some value |>)
+      | Address.result => Some (state <| State.result := Some value |>)
+      end;
+  }.
+
+  Lemma IsStateValid : State.Valid.t Impl_State.
+  Proof.
+    sauto.
+  Qed.
+End base64_encode_elements.
+
+Module State.
+  Record t : Set := {
+    base64_encode_elements : base64_encode_elements.State.t;
+  }.
+
+  Definition init : t := {|
+    base64_encode_elements := base64_encode_elements.State.init;
+  |}.
+End State.
+
+Module Address.
+  Inductive t : Set :=
+  | base64_encode_elements (address : base64_encode_elements.Address.t).
+End Address.
+
+Global Instance Impl_State : State.Trait State.t Address.t := {
+  read state address :=
+    match address with
+    | Address.base64_encode_elements address =>
+      State.read state.(State.base64_encode_elements) address
+    end;
+  alloc_write state address value :=
+    match address with
+    | Address.base64_encode_elements address =>
+      match State.alloc_write state.(State.base64_encode_elements) address value with
+      | Some base64_encode_elements =>
+        Some (state <| State.base64_encode_elements := base64_encode_elements |>)
+      | None => None
+      end
+    end;
+}.
+
+Lemma IsStateValid : State.Valid.t Impl_State.
+Proof.
+  sauto lq: on rew: off.
+Qed.
+
 (*
 /**
  * @brief Take an array of ASCII values and convert into base64 values
@@ -167,45 +242,6 @@ Definition base64_encode_elements {InputElements : U32.t} (input : Array.t U8.t 
     )
     (List.seq 0 (Z.to_nat (SemiInteger.to_Z InputElements)))
     (return! result).
-
-Module base64_encode_elements.
-  Module State.
-    Record t : Set := {
-      base64_encoder : option Value.t;
-      result : option Value.t;
-    }.
-    Arguments t : clear implicits.
-
-    Definition init : t := {|
-      base64_encoder := None;
-      result := None;
-    |}.
-  End State.
-
-  Module Address.
-    Inductive t : Set :=
-    | Base64Encoder
-    | Result.
-  End Address.
-
-  Global Instance Impl_State : State.Trait State.t Address.t := {
-    read a s :=
-      match a with
-      | Address.Base64Encoder => s.(State.base64_encoder)
-      | Address.Result => s.(State.result)
-      end;
-    alloc_write a s v :=
-      match a with
-      | Address.Base64Encoder => Some (s <| State.base64_encoder := Some v |>)
-      | Address.Result => Some (s <| State.result := Some v |>)
-      end;
-  }.
-
-  Lemma Impl_IsStateValid : State.Valid.t Impl_State.
-  Proof.
-    sauto.
-  Qed.
-End base64_encode_elements.
 
 Ltac cbn_goal :=
   match goal with

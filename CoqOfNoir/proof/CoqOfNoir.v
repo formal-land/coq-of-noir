@@ -4,8 +4,8 @@ Require Import CoqOfNoir.simulation.CoqOfNoir.
 
 Module State.
   Class Trait (State Address : Set) : Type := {
-    read (a : Address) : State -> option Value.t;
-    alloc_write (a : Address) : State -> Value.t -> option State;
+    read : State -> Address -> option Value.t;
+    alloc_write : State -> Address -> Value.t -> option State;
   }.
  
   Module Valid.
@@ -15,20 +15,20 @@ Module State.
         allocated values. *)
     Record t `(Trait) : Prop := {
       (* [alloc_write] can only fail on new cells *)
-      not_allocated (a : Address) (s : State) (v : Value.t) :
-        match alloc_write a s v with
+      not_allocated (state : State) (address : Address) (value : Value.t) :
+        match alloc_write state address value with
         | Some _ => True
-        | None => read a s = None
+        | None => read state address = None
         end;
-      same (a : Address) (s : State) (v : Value.t) :
-        match alloc_write a s v with
-        | Some s => read a s = Some v
+      same (state : State) (address : Address) (value : Value.t) :
+        match alloc_write state address value with
+        | Some state => read state address = Some value
         | None => True
         end;
-      different (a1 a2 : Address) (s : State) (v2 : Value.t) :
-        a1 <> a2 ->
-        match alloc_write a2 s v2 with
-        | Some s' => read a1 s' = read a1 s
+      different (state : State) (address1 address2 : Address) (value2 : Value.t) :
+        address1 <> address2 ->
+        match alloc_write state address2 value2 with
+        | Some state' => read state' address1 = read state address1
         | None => True
         end;
         }.
@@ -50,8 +50,8 @@ Module Run.
       (k : Value.t -> M.t)
       (state_in state_in' : State) :
     let pointer := Pointer.Mutable (Pointer.Mutable.Make address []) in
-    State.read address state_in = None ->
-    State.alloc_write address state_in value = Some state_in' ->
+    State.read state_in address = None ->
+    State.alloc_write state_in address value = Some state_in' ->
     {{ p, state_in' | k (Value.Pointer pointer) ⇓ output | state_out }} ->
     {{ p, state_in | LowM.CallPrimitive (Primitive.StateAlloc value) k ⇓ output | state_out }}
   | CallPrimitiveStateRead
@@ -59,7 +59,7 @@ Module Run.
       (value : Value.t)
       (k : Value.t -> M.t)
       (state_in : State) :
-    State.read address state_in = Some value ->
+    State.read state_in address = Some value ->
     {{ p, state_in | k value ⇓ output | state_out }} ->
     {{ p, state_in | LowM.CallPrimitive (Primitive.StateRead address) k ⇓ output | state_out }}
   | CallPrimitiveStateWrite
@@ -67,7 +67,7 @@ Module Run.
       (address : Address)
       (k : unit -> M.t)
       (state_in state_in' : State) :
-    State.alloc_write address state_in value = Some state_in' ->
+    State.alloc_write state_in address value = Some state_in' ->
     {{ p, state_in' | k tt ⇓ output | state_out }} ->
     {{ p, state_in |
       LowM.CallPrimitive (Primitive.StateWrite address value) k ⇓ output
@@ -216,8 +216,8 @@ Module Singleton.
   End Address.
 
   Global Instance IsState : State.Trait State.t Address.t := {
-    read _ s := s;
-    alloc_write _ s v := Some (Some v);
+    read state _ := state;
+    alloc_write state _ value := Some (Some value);
   }.
 
   Lemma IsStateValid : State.Valid.t IsState.
