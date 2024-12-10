@@ -20,6 +20,11 @@ Module Base64EncodeBE.
       Value.Tuple [to_value x.(table)];
   }.
 
+  Lemma rewrite_to_value (x : t) :
+    Value.Tuple [to_value x.(table)] = to_value x.
+  Proof. reflexivity. Qed.
+  Global Hint Rewrite rewrite_to_value : to_value.
+
   Definition ascii_codes : list U8.t := List.map U8.Build_t [
     65; 66; 67; 68; 69; 70; 71; 72; 73; 74; 75; 76; 77; 78; 79; 80; 81; 82; 83; 84; 85; 86; 87; 88; 89; 90;
     97; 98; 99; 100; 101; 102; 103; 104; 105; 106; 107; 108; 109; 110; 111; 112; 113; 114; 115; 116; 117; 118; 119; 120; 121; 122;
@@ -52,10 +57,10 @@ Module Base64EncodeBE.
 
   Lemma run_new {State Address : Set} `{State.Trait State Address}
       (p : Z) (state : State) :
-    {{ p, state |
-      polymorphic.Base64EncodeBE.new [] ⇓
+    {{ p, state ⏩
+      polymorphic.Base64EncodeBE.new [] 🔽
       Result.Ok (to_value new)
-    | state }}.
+    ⏩ state }}.
   Proof.
     unfold polymorphic.Base64EncodeBE.new, new.
     eapply Run.Let. {
@@ -63,6 +68,7 @@ Module Base64EncodeBE.
     }
     apply Run.Pure.
   Qed.
+  Global Opaque new.
 
   (*
   fn get(self, idx: Field) -> u8 {
@@ -74,26 +80,17 @@ Module Base64EncodeBE.
 
   Lemma run_get {State Address : Set} `{State.Trait State Address}
       (p : Z) (state : State)
-      (self : t) (idx : Field.t) (result : U8.t)
-      (H_result : get self idx = return! result) :
-    {{ p, state |
-      polymorphic.Base64EncodeBE.get [to_value self; to_value idx] ⇓
-      Result.Ok (to_value result)
-    | state }}.
+      (self : t) (idx : Field.t) :
+    {{ p, state ⏩
+      polymorphic.Base64EncodeBE.get [to_value self; to_value idx] 🔽
+      Panic.to_result (get self idx)
+    ⏩ state }}.
   Proof.
-    unfold polymorphic.Base64EncodeBE.get.
-    unfold get, Array.read in H_result.
-    (* destruct self as [ [table] ], idx as [idx]. *)
-    cbn in *.
+    unfold polymorphic.Base64EncodeBE.get, get, Array.read; cbn.
     rewrite List.nth_error_map.
-    destruct List.nth_error; cbn.
-    { inversion_clear H_result.
-      apply Run.Pure.
-    }
-    { exfalso.
-      discriminate.
-    }
+    destruct List.nth_error; cbn; apply Run.Pure.
   Qed.
+  Global Opaque get.
 
   (*
   (** How accessing the table of characters is used in practice *)
@@ -124,16 +121,91 @@ Module Base64EncodeBE.
       (p : Z) (state : State)
       (idx : Z)
       (H_idx : 0 <= idx < 64) :
-    {{ p, state |
-      polymorphic.Base64EncodeBE.get [to_value new; to_value (Field.Build_t idx)] ⇓
+    {{ p, state ⏩
+      polymorphic.Base64EncodeBE.get [to_value new; to_value (Field.Build_t idx)] 🔽
       Result.Ok (to_value (U8.Build_t (get_ascii_table idx)))
-    | state }}.
+    ⏩ state }}.
   Proof.
     apply run_get.
     now rewrite get_ascii_table_eq.
   Qed.
   *)
 End Base64EncodeBE.
+
+Module base64_encode_elements.
+  Module State.
+    Record t : Set := {
+      Base64Encoder : option Value.t;
+      result : option Value.t;
+    }.
+
+    Definition init : t := {|
+      Base64Encoder := None;
+      result := None;
+    |}.
+  End State.
+
+  Module Address.
+    Inductive t : Set :=
+    | Base64Encoder
+    | result.
+  End Address.
+
+  Global Instance Impl_State : State.Trait State.t Address.t := {
+    read state address :=
+      match address with
+      | Address.Base64Encoder => state.(State.Base64Encoder)
+      | Address.result => state.(State.result)
+      end;
+    alloc_write state address value :=
+      match address with
+      | Address.Base64Encoder => Some (state <| State.Base64Encoder := Some value |>)
+      | Address.result => Some (state <| State.result := Some value |>)
+      end;
+  }.
+
+  Lemma IsStateValid : State.Valid.t Impl_State.
+  Proof.
+    sauto.
+  Qed.
+End base64_encode_elements.
+
+Module State.
+  Record t : Set := {
+    base64_encode_elements : base64_encode_elements.State.t;
+  }.
+
+  Definition init : t := {|
+    base64_encode_elements := base64_encode_elements.State.init;
+  |}.
+End State.
+
+Module Address.
+  Inductive t : Set :=
+  | base64_encode_elements (address : base64_encode_elements.Address.t).
+End Address.
+
+Global Instance Impl_State : State.Trait State.t Address.t := {
+  read state address :=
+    match address with
+    | Address.base64_encode_elements address =>
+      State.read state.(State.base64_encode_elements) address
+    end;
+  alloc_write state address value :=
+    match address with
+    | Address.base64_encode_elements address =>
+      match State.alloc_write state.(State.base64_encode_elements) address value with
+      | Some base64_encode_elements =>
+        Some (state <| State.base64_encode_elements := base64_encode_elements |>)
+      | None => None
+      end
+    end;
+}.
+
+Lemma IsStateValid : State.Valid.t Impl_State.
+Proof.
+  sauto lq: on rew: off.
+Qed.
 
 (*
 /**
@@ -151,151 +223,175 @@ pub fn base64_encode_elements<let InputElements: u32>(input: [u8; InputElements]
     result
 }
 *)
-Definition base64_encode_elements {InputElements : U32.t} (input : Array.t U8.t InputElements) :
-    M! (Array.t U8.t InputElements) :=
+Definition base64_encode_elements_for_init {InputElements : U32.t}
+    (input : Array.t U8.t InputElements) :
+    Array.t U8.t InputElements :=
+  Array.repeat InputElements (U8.Build_t 0).
+
+Definition base64_encode_elements_for_body (p : Z) {InputElements : U32.t}
+    (input : Array.t U8.t InputElements) (i : Z) :
+    MS! (Array.t U8.t InputElements) unit :=
+  let i : U32.t := U32.Build_t i in
+  letS! input_i := return!toS! (Array.read input i) in
+  letS! input_i := return!toS! (cast_to_field p input_i) in
+  letS! new_result_i :=
+    return!toS! (Base64EncodeBE.get Base64EncodeBE.new input_i)in
+  letS! result := readS! in
+  letS! result := return!toS! (Array.write result i new_result_i) in
+  writeS! result.
+
+Definition base64_encode_elements (p : Z) {InputElements : U32.t}
+    (input : Array.t U8.t InputElements) :
+    M! (Array.t U8.t InputElements) * Array.t U8.t InputElements :=
   let Base64Encoder := Base64EncodeBE.new in
 
-  let result : Array.t U8.t InputElements := Array.repeat InputElements (U8.Build_t 0) in
+  (
+    doS! (
+      foldS!
+        tt
+        (List.map Z.of_nat (List.seq 0 (Z.to_nat (ToZ.to_Z InputElements))))
+        (fun result i => base64_encode_elements_for_body p input i)
+    ) in
+    letS! result := readS! in
+    returnS! result
+  ) (base64_encode_elements_for_init input).
 
-  List.fold_left
-    (fun (result : M! (Array.t U8.t InputElements)) (i : nat) =>
-      let! result := result in
-      let i : U32.t := U32.Build_t (Z.of_nat i) in
-      let! input_i := Array.read input i in
-      let! new_result_i := Base64EncodeBE.get Base64Encoder (Field.Build_t (Integer.to_Z input_i)) in
-      Array.write result i new_result_i
-    )
-    (List.seq 0 (Z.to_nat (SemiInteger.to_Z InputElements)))
-    (return! result).
+Lemma map_listUpdate_eq {A B : Type} (f : A -> B) (l : list A) (i : nat) (x : A) (y : B)
+    (H_y : y = f x) :
+  List.listUpdate (List.map f l) i y = List.map f (List.listUpdate l i x).
+Proof.
+  unfold List.listUpdate.
+  rewrite List.firstn_map, List.skipn_map, List.map_app.
+  sfirstorder.
+Qed.
 
-Module base64_encode_elements.
-  Module State.
-    Record t : Set := {
-      base64_encoder : option Value.t;
-      result : option Value.t;
-    }.
-    Arguments t : clear implicits.
+Lemma map_listUpdate_error_eq {A B : Type} (f : A -> B) (l : list A) (i : nat) (x : A) (y : B)
+    (H_y : y = f x) :
+  List.listUpdate_error (List.map f l) i y = option_map (List.map f) (List.listUpdate_error l i x).
+Proof.
+  unfold List.listUpdate_error.
+  rewrite List.map_length.
+  destruct (_ <? _)%nat; cbn; f_equal.
+  now erewrite map_listUpdate_eq.
+Qed.
 
-    Definition init : t := {|
-      base64_encoder := None;
-      result := None;
-    |}.
-  End State.
-
-  Module Address.
-    Inductive t : Set :=
-    | Base64Encoder
-    | Result.
-  End Address.
-
-  Global Instance Impl_State : State.Trait State.t Address.t := {
-    read a s :=
-      match a with
-      | Address.Base64Encoder => s.(State.base64_encoder)
-      | Address.Result => s.(State.result)
-      end;
-    alloc_write a s v :=
-      match a with
-      | Address.Base64Encoder => Some (s <| State.base64_encoder := Some v |>)
-      | Address.Result => Some (s <| State.result := Some v |>)
-      end;
-  }.
-
-  Lemma Impl_IsStateValid : State.Valid.t Impl_State.
-  Proof.
-    sauto.
-  Qed.
-End base64_encode_elements.
-
-Ltac cbn_goal :=
-  match goal with
-  | |- Run.t _ _ _ _ ?e =>
-    let e' := eval cbn in e in
-    change e with e'
-  end.
-
-(*
 Lemma run_base64_encode_elements
     (p : Z)
     {InputElements : U32.t}
     (input : Array.t U8.t InputElements)
+    (H_InputElements : Integer.Valid.t InputElements)
     (H_input : Array.Valid.t input) :
-  let output := base64_encode_elements input in
-  let state_end := {|
-    base64_encode_elements.State.base64_encoder := Some (to_value Base64EncodeBE.new);
-    base64_encode_elements.State.result := Some (to_value output);
-  |} in
-    {{ p, base64_encode_elements.State.init |
-      polymorphic.base64_encode_elements InputElements [to_value input] ⇓
-      Result.Ok (to_value output)
-    | state_end }}
-  | Panic.Panic _ => True
-  end.
+  let output := base64_encode_elements p input in
+  let state_end : State.t :=
+    State.init <|
+      State.base64_encode_elements := {|
+        base64_encode_elements.State.Base64Encoder := Some (to_value Base64EncodeBE.new);
+        base64_encode_elements.State.result := Some (to_value (snd output));
+      |}
+    |> in
+    {{ p, State.init ⏩
+      polymorphic.base64_encode_elements InputElements [to_value input] 🔽
+      Panic.to_result (fst output)
+    ⏩ state_end }}.
 Proof.
-  Opaque Base64EncodeBE.get M.index.
-  destruct base64_encode_elements as [output|] eqn:H_base64_encode_elements;
-    [|trivial].
-  unfold polymorphic.base64_encode_elements.
+  unfold polymorphic.base64_encode_elements, base64_encode_elements.
   eapply Run.Let. {
     eapply Run.CallClosure. {
       apply Base64EncodeBE.run_new.
     }
-    eapply CallPrimitiveStateAlloc with (address := base64_encode_elements.Address.Base64Encoder);
+    eapply CallPrimitiveStateAlloc with (address :=
+      Address.base64_encode_elements (base64_encode_elements.Address.Base64Encoder)
+    );
       try reflexivity.
     apply Run.Pure.
   }
   eapply Run.Let. {
-    eapply CallPrimitiveStateAlloc with (address := base64_encode_elements.Address.Result);
+    eapply CallPrimitiveStateAlloc with (address :=
+      Address.base64_encode_elements (base64_encode_elements.Address.result)
+    );
       try reflexivity.
     apply Run.Pure.
   }
   fold @LowM.let_.
-  apply Run.LetUnfold.
-  fold @LowM.let_.
-  unfold M.for_, M.for_Z.
-  cbn_goal.
-  unfold Integer.to_nat, Integer.to_Z.
-  repeat match goal with
-  | |- context[Z.to_nat ?x] =>
-    let n' := eval cbn in (Z.to_nat x) in
-    change (Z.to_nat x) with n'
-  end.
-  match goal with
-  | |- context[?x - 0] =>
-    replace (x - 0) with x by lia
-  end.
-  unfold Array.Valid.t in H_input.
-  cbn in H_input.
-  unfold base64_encode_elements, Array.repeat in H_base64_encode_elements.
-  cbn in H_base64_encode_elements.
-  induction (Z.to_nat _); cbn_goal.
-  { eapply Run.CallPrimitiveStateRead; [reflexivity|].
-    cbn in H_base64_encode_elements.
-    inversion_clear H_base64_encode_elements.
-    apply Run.Pure.
-  }
-  { eapply Run.CallPrimitiveStateRead; [reflexivity|].
+  eapply Run.Let. {
+    eapply Run.For with
+      (inject :=
+        fun state accumulator =>
+          state <| State.base64_encode_elements :=
+            state.(State.base64_encode_elements) <|
+              base64_encode_elements.State.result := Some (to_value accumulator)
+            |>
+          |>
+      )
+      (accumulator_in := base64_encode_elements_for_init input)
+      (len := Z.to_nat InputElements.(U32.value))
+      (body_expression := base64_encode_elements_for_body p input).
+    2: {
+      unfold set.
+      repeat f_equal.
+      cbn; f_equal.
+      now rewrite List.map_repeat.
+    }
+    2: {
+      reflexivity.
+    }
+    2: {
+      unfold Integer.Valid.t in H_InputElements; cbn in *.
+      f_equal.
+      lia.
+    }
+    intros.
+    eapply Run.CallPrimitiveStateRead; [reflexivity|].
     fold @LowM.let_.
-    Transparent M.index.
-    unfold M.index.
-    cbn_goal.
+    unfold set; cbn.
+    unfold Array.read; cbn.
+    rewrite List.nth_error_map.
+    destruct List.nth_error as [result|]; cbn; [|apply Run.Pure].
+    apply Run.CallPrimitiveGetFieldPrime.
+    unfold cast_to_field; cbn.
+    destruct (_ && _); cbn; [|apply Run.Pure].
+    eapply Run.CallClosure. {
+      autorewrite with to_value.
+      match goal with
+      | |- context[Value.Integer IntegerKind.Field ?i] =>
+        change (Value.Integer IntegerKind.Field i) with (to_value (Field.Build_t i))
+      end.
+      apply Base64EncodeBE.run_get.
+    }
+    destruct Base64EncodeBE.get; cbn; [|apply Run.Pure].
+    eapply Run.CallPrimitiveStateRead; [reflexivity|].
+    unfold Array.write; cbn.
+    rewrite List.nth_error_map.
+    destruct List.nth_error as [unused|] eqn:H_nth_error; cbn.
+    { clear H_nth_error unused.
+      erewrite map_listUpdate_error_eq by reflexivity.
+      unfold List.listUpdate_error.
+      destruct (_ <? _)%nat; cbn; [|apply Run.Pure].
+      eapply Run.CallPrimitiveStateWrite; [reflexivity|].
+      unfold set; cbn.
+      apply Run.Pure.
+    }
+    { assert (Datatypes.length accumulator_in.(Array.value) <= Z.to_nat i)%nat
+         by hauto lq: on use: List.nth_error_None.
+      unfold List.listUpdate_error.
+      destruct (_ <? _)%nat eqn:?; [lia|].
+      apply Run.Pure.
+    }
   }
-  set (n := Z.to_nat _).
-
-  simpl.
-  cbn.
-    (* Entering the loop *)
-    destruct input as [input].
-  simpl.
+  fold @LowM.let_.
+  unfold StatePanic.bind.
+  destruct (foldS! _ _ _) as [status result].
+  destruct status; cbn; [|apply Run.Pure].
+  eapply Run.CallPrimitiveStateRead; [reflexivity|].
+  apply Run.Pure.
 Qed.
-*)
 
 (* Lemma run_eq₂ {State Address : Set} `{State.Trait State Address}
     (state : State) (self other : Array.t U8.t 36) :
   {{ state |
-    translation.eq₂ [to_value self; to_value other] ⇓
+    translation.eq₂ [to_value self; to_value other] 🔽
     Result.Ok (to_value (Eq.eq self other))
-  | state }}.
+  ⏩ state }}.
 Proof.
   unfold translation.eq₂. *)
 

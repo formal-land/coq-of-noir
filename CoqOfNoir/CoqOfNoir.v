@@ -3,6 +3,7 @@ Require Export Coq.Strings.Ascii.
 Require Coq.Strings.HexString.
 Require Export Coq.Strings.String.
 Require Export Coq.ZArith.ZArith.
+Require Coq.micromega.ZifyBool.
 Require coqutil.Datatypes.List.
 Require Export RecordUpdate.
 
@@ -122,7 +123,7 @@ Module Value.
       match value with
       | Tuple values =>
         match List.listUpdate_error values (Z.to_nat i) update with
-        | Some new_values => Some (Tuple values)
+        | Some new_values => Some (Tuple new_values)
         | None => None
         end
       | _ => None
@@ -131,7 +132,7 @@ Module Value.
       match value with
       | Array values =>
         match List.listUpdate_error values (Z.to_nat i) update with
-        | Some new_values => Some (Array values)
+        | Some new_values => Some (Array new_values)
         | None => None
         end
       | _ => None
@@ -454,8 +455,6 @@ Module M.
     | _ => impossible "index: expected a pointer"
     end.
 
-  Parameter assign : Value.t -> Value.t -> M.t.
-
   Definition extract_tuple_field (tuple : Value.t) (field : Z) : M.t :=
     match tuple with
     | Value.Pointer tuple_pointer =>
@@ -487,7 +486,7 @@ Module M.
 
   Fixpoint for_nat (end_ : Z) (fuel : nat) (body : Z -> M.t) {struct fuel} : M.t :=
     match fuel with
-    | O => pure (Value.Tuple [])
+    | O => pure (alloc (Value.Tuple []))
     | S fuel' =>
       let* _ := body (end_ - Z.of_nat fuel) in
       for_nat end_ fuel' body

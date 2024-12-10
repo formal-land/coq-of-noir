@@ -4,8 +4,8 @@ Require Import CoqOfNoir.simulation.CoqOfNoir.
 
 Module State.
   Class Trait (State Address : Set) : Type := {
-    read (a : Address) : State -> option Value.t;
-    alloc_write (a : Address) : State -> Value.t -> option State;
+    read : State -> Address -> option Value.t;
+    alloc_write : State -> Address -> Value.t -> option State;
   }.
  
   Module Valid.
@@ -15,20 +15,20 @@ Module State.
         allocated values. *)
     Record t `(Trait) : Prop := {
       (* [alloc_write] can only fail on new cells *)
-      not_allocated (a : Address) (s : State) (v : Value.t) :
-        match alloc_write a s v with
+      not_allocated (state : State) (address : Address) (value : Value.t) :
+        match alloc_write state address value with
         | Some _ => True
-        | None => read a s = None
+        | None => read state address = None
         end;
-      same (a : Address) (s : State) (v : Value.t) :
-        match alloc_write a s v with
-        | Some s => read a s = Some v
+      same (state : State) (address : Address) (value : Value.t) :
+        match alloc_write state address value with
+        | Some state => read state address = Some value
         | None => True
         end;
-      different (a1 a2 : Address) (s : State) (v2 : Value.t) :
-        a1 <> a2 ->
-        match alloc_write a2 s v2 with
-        | Some s' => read a1 s' = read a1 s
+      different (state : State) (address1 address2 : Address) (value2 : Value.t) :
+        address1 <> address2 ->
+        match alloc_write state address2 value2 with
+        | Some state' => read state' address1 = read state address1
         | None => True
         end;
         }.
@@ -36,108 +36,108 @@ Module State.
 End State.
 
 Module Run.
-  Reserved Notation "{{ p , state_in | e ⇓ output | state_out }}".
+  Reserved Notation "{{ p , state_in ⏩ e 🔽 output ⏩ state_out }}".
 
   Inductive t {State Address : Set} `{State.Trait State Address}
       (p : Z) (output : Result.t) (state_out : State) :
       State -> M.t -> Prop :=
   | Pure :
     (* This should be the only case where the input and output states are the same. *)
-    {{ p, state_out | LowM.Pure output ⇓ output | state_out }}
+    {{ p, state_out ⏩ LowM.Pure output 🔽 output ⏩ state_out }}
   | CallPrimitiveStateAlloc
       (value : Value.t)
       (address : Address)
       (k : Value.t -> M.t)
       (state_in state_in' : State) :
     let pointer := Pointer.Mutable (Pointer.Mutable.Make address []) in
-    State.read address state_in = None ->
-    State.alloc_write address state_in value = Some state_in' ->
-    {{ p, state_in' | k (Value.Pointer pointer) ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.CallPrimitive (Primitive.StateAlloc value) k ⇓ output | state_out }}
+    State.read state_in address = None ->
+    State.alloc_write state_in address value = Some state_in' ->
+    {{ p, state_in' ⏩ k (Value.Pointer pointer) 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.CallPrimitive (Primitive.StateAlloc value) k 🔽 output ⏩ state_out }}
   | CallPrimitiveStateRead
       (address : Address)
       (value : Value.t)
       (k : Value.t -> M.t)
       (state_in : State) :
-    State.read address state_in = Some value ->
-    {{ p, state_in | k value ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.CallPrimitive (Primitive.StateRead address) k ⇓ output | state_out }}
+    State.read state_in address = Some value ->
+    {{ p, state_in ⏩ k value 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.CallPrimitive (Primitive.StateRead address) k 🔽 output ⏩ state_out }}
   | CallPrimitiveStateWrite
       (value : Value.t)
       (address : Address)
       (k : unit -> M.t)
       (state_in state_in' : State) :
-    State.alloc_write address state_in value = Some state_in' ->
-    {{ p, state_in' | k tt ⇓ output | state_out }} ->
-    {{ p, state_in |
-      LowM.CallPrimitive (Primitive.StateWrite address value) k ⇓ output
-    | state_out }}
+    State.alloc_write state_in address value = Some state_in' ->
+    {{ p, state_in' ⏩ k tt 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩
+      LowM.CallPrimitive (Primitive.StateWrite address value) k 🔽 output
+    ⏩ state_out }}
   | CallPrimitiveGetFieldPrime
       (k : Z -> M.t)
       (state_in : State) :
-    {{ p, state_in | k p ⇓ output | state_out }} ->
-    {{ p, state_in |
-      LowM.CallPrimitive Primitive.GetFieldPrime k ⇓ output
-    | state_out }}
+    {{ p, state_in ⏩ k p 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩
+      LowM.CallPrimitive Primitive.GetFieldPrime k 🔽 output
+    ⏩ state_out }}
   | CallPrimitiveIsEqualTrue
       (value1 value2 : Value.t)
       (k : bool -> M.t)
       (state_in : State) :
     (* The hypothesis of equality is explicit as this should be more convenient for the proofs *)
     value1 = value2 ->
-    {{ p, state_in | k true ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.CallPrimitive (Primitive.IsEqual value1 value2) k ⇓ output | state_out }}
+    {{ p, state_in ⏩ k true 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.CallPrimitive (Primitive.IsEqual value1 value2) k 🔽 output ⏩ state_out }}
   | CallPrimitiveIsEqualFalse
       (value1 value2 : Value.t)
       (k : bool -> M.t)
       (state_in : State) :
     value1 <> value2 ->
-    {{ p, state_in | k false ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.CallPrimitive (Primitive.IsEqual value1 value2) k ⇓ output | state_out }}
+    {{ p, state_in ⏩ k false 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.CallPrimitive (Primitive.IsEqual value1 value2) k 🔽 output ⏩ state_out }}
   | CallClosure
       (f : list Value.t -> M.t) (args : list Value.t)
       (k : Result.t -> M.t)
       (output_inter : Result.t)
       (state_in state_inter : State) :
     let closure := Value.Closure (existS (_, _) f) in
-    {{ p, state_in | f args ⇓ output_inter | state_inter }} ->
-    {{ p, state_inter | k output_inter ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.CallClosure closure args k ⇓ output | state_out }}
+    {{ p, state_in ⏩ f args 🔽 output_inter ⏩ state_inter }} ->
+    {{ p, state_inter ⏩ k output_inter 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.CallClosure closure args k 🔽 output ⏩ state_out }}
   | Let
       (e : M.t)
       (k : Result.t -> M.t)
       (output_inter : Result.t)
       (state_in state_inter : State) :
-    {{ p, state_in | e ⇓ output_inter | state_inter }} ->
-    {{ p, state_inter | k output_inter ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.Let e k ⇓ output | state_out }}
+    {{ p, state_in ⏩ e 🔽 output_inter ⏩ state_inter }} ->
+    {{ p, state_inter ⏩ k output_inter 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.Let e k 🔽 output ⏩ state_out }}
   | LetUnfold
       (e : M.t)
       (k : Result.t -> M.t)
       (state_in : State) :
-    {{ p, state_in | LowM.let_ e k ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.Let e k ⇓ output | state_out }}
+    {{ p, state_in ⏩ LowM.let_ e k 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.Let e k 🔽 output ⏩ state_out }}
   | LetUnUnfold
       (e : M.t)
       (k : Result.t -> M.t)
       (state_in : State) :
-    {{ p, state_in | LowM.Let e k ⇓ output | state_out }} ->
-    {{ p, state_in | LowM.let_ e k ⇓ output | state_out }}
+    {{ p, state_in ⏩ LowM.Let e k 🔽 output ⏩ state_out }} ->
+    {{ p, state_in ⏩ LowM.let_ e k 🔽 output ⏩ state_out }}
 
-  where "{{ p , state_in | e ⇓ output | state_out }}" :=
+  where "{{ p , state_in ⏩ e 🔽 output ⏩ state_out }}" :=
     (t p output state_out state_in e).
 
   Lemma PureEq {State Address : Set} `{State.Trait State Address}
       (p : Z) (output output' : Result.t) (state state' : State) :
     output = output' ->
     state = state' ->
-    {{ p, state | LowM.Pure output ⇓ output' | state' }}.
+    {{ p, state ⏩ LowM.Pure output 🔽 output' ⏩ state' }}.
   Proof.
     intros -> ->.
     apply Pure.
   Qed.
 
-  Lemma For {State Address : Set} `{State.Trait State Address}
+  Lemma For_aux {State Address : Set} `{State.Trait State Address}
       (p : Z) (state_in : State)
       (integer_kind : IntegerKind.t) (start : Z) (len : nat) (body : Value.t -> M.t)
       {Accumulator : Set}
@@ -146,10 +146,10 @@ Module Run.
       (body_expression : Z -> MS! Accumulator unit)
       (H_body : forall (accumulator_in : Accumulator) (i : Z),
         let output_accumulator_out := body_expression i accumulator_in in
-        {{ p, inject state_in accumulator_in |
-          body (M.alloc (Value.Integer integer_kind i)) ⇓
-          Panic.to_result (fst output_accumulator_out)
-        | inject state_in (snd output_accumulator_out) }}
+        {{ p, inject state_in accumulator_in ⏩
+          body (M.alloc (Value.Integer integer_kind i)) 🔽
+          Panic.to_result_alloc (fst output_accumulator_out)
+        ⏩ inject state_in (snd output_accumulator_out) }}
       ) :
     let output_accumulator_out :=
       foldS!
@@ -157,13 +157,13 @@ Module Run.
         (List.map (fun offset => start + Z.of_nat offset) (List.seq 0 len))
         (fun (_ : unit) => body_expression)
         accumulator_in in
-    {{ p, inject state_in accumulator_in |
+    {{ p, inject state_in accumulator_in ⏩
       M.for_
         (Value.Integer integer_kind start)
         (Value.Integer integer_kind (start + Z.of_nat len))
-        body ⇓
-      Panic.to_result (fst output_accumulator_out)
-    | inject state_in (snd output_accumulator_out) }}.
+        body 🔽
+      Panic.to_result_alloc (fst output_accumulator_out)
+    ⏩ inject state_in (snd output_accumulator_out) }}.
   Proof.
     revert start accumulator_in.
     induction len as [| len IHlen]; intros; unfold M.for_, M.for_Z in *; simpl in *.
@@ -204,6 +204,38 @@ Module Run.
       { apply Run.Pure. }
     }
   Qed.
+
+  Lemma For {State Address : Set} `{State.Trait State Address}
+    (p : Z) (state_in : State)
+    (integer_kind : IntegerKind.t) (start_z : Z) (len : nat) (body : Value.t -> M.t)
+    (start end_ : Value.t)
+    {Accumulator : Set}
+    (inject : State -> Accumulator -> State)
+    (accumulator_in : Accumulator)
+    (body_expression : Z -> MS! Accumulator unit)
+    (H_body : forall (accumulator_in : Accumulator) (i : Z),
+      let output_accumulator_out := body_expression i accumulator_in in
+      {{ p, inject state_in accumulator_in ⏩
+        body (M.alloc (Value.Integer integer_kind i)) 🔽
+        Panic.to_result_alloc (fst output_accumulator_out)
+      ⏩ inject state_in (snd output_accumulator_out) }}
+    ) :
+  let output_accumulator_out :=
+    foldS!
+      tt
+      (List.map (fun offset => start_z + Z.of_nat offset) (List.seq 0 len))
+      (fun (_ : unit) => body_expression)
+      accumulator_in in
+  state_in = inject state_in accumulator_in ->
+  start = Value.Integer integer_kind start_z ->
+  end_ = Value.Integer integer_kind (start_z + Z.of_nat len) ->
+  {{ p, state_in ⏩
+    M.for_ start end_ body 🔽
+    Panic.to_result_alloc (fst output_accumulator_out)
+  ⏩ inject state_in (snd output_accumulator_out) }}.
+  Proof.
+    hauto q: on use: For_aux.
+  Qed.
 End Run.
 
 Module Singleton.
@@ -216,8 +248,8 @@ Module Singleton.
   End Address.
 
   Global Instance IsState : State.Trait State.t Address.t := {
-    read _ s := s;
-    alloc_write _ s v := Some (Some v);
+    read state _ := state;
+    alloc_write state _ value := Some (Some value);
   }.
 
   Lemma IsStateValid : State.Valid.t IsState.
@@ -225,3 +257,24 @@ Module Singleton.
     sauto lq: on rew: off.
   Qed.
 End Singleton.
+
+Module Field.
+  Module Valid.
+    Definition t (p : Z) (x : Field.t) : Prop :=
+      0 <= x.(Field.value) < p.
+  End Valid.
+End Field.
+
+Module Integer.
+  Module Valid.
+    Definition t {A : Set} `{Integer.Trait A} (x : A) : Prop :=
+      Integer.min (Self := A) <= Integer.to_Z x <= Integer.max (Self := A).
+  End Valid.
+End Integer.
+
+Module Array.
+  Module Valid.
+    Definition t {A : Set} {size : U32.t} (array : Array.t A size) : Prop :=
+      List.length array.(Array.value) = Z.to_nat (Integer.to_Z size).
+  End Valid.
+End Array.

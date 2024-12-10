@@ -231,7 +231,7 @@ Definition base64_encode_elements (InputElements : U32.t) (α : list Value.t) : 
       |) ]] in
       let~ result := [[ M.copy_mutable (|
         M.alloc (Value.Array (
-          List.repeat (Value.Integer IntegerKind.U8 0) (Integer.to_nat InputElements)
+          List.repeat (Value.Integer IntegerKind.U8 0) (Z.to_nat (Integer.to_Z InputElements))
         ))
       |) ]] in
       do~ [[
@@ -240,7 +240,7 @@ Definition base64_encode_elements (InputElements : U32.t) (α : list Value.t) : 
           to_value InputElements,
           fun (i : Value.t) =>
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               M.index (|
                 result,
                 M.read (| i |)
@@ -288,7 +288,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
       let~ result := [[ M.copy_mutable (|
         M.alloc (Value.Array (List.repeat
           (Value.Integer IntegerKind.U8 0)
-          (Integer.to_nat OutputElements)
+          (Z.to_nat (Integer.to_Z OutputElements))
         ))
       |) ]] in
       let~ BASE64_ELEMENTS_PER_CHUNK := [[ M.copy (|
@@ -338,7 +338,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
                   M.read (| BYTES_PER_CHUNK |),
                   fun (j : Value.t) =>
                   do~ [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.multiply (|
                         M.read (| slice |),
@@ -347,7 +347,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
                     |))
                   ]] in
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.add (|
                         M.read (| slice |),
@@ -384,7 +384,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
                   M.read (| BASE64_ELEMENTS_PER_CHUNK |),
                   fun (j : Value.t) =>
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       M.index (|
                         result,
                         Binary.add (|
@@ -426,7 +426,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
               M.read (| bytes_in_final_chunk |),
               fun (j : Value.t) =>
               do~ [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -435,7 +435,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
                 |))
               ]] in
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.add (|
                     M.read (| slice |),
@@ -466,7 +466,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
               M.read (| BYTES_PER_CHUNK |),
               fun (_ : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -503,7 +503,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
               M.read (| num_elements_in_final_chunk |),
               fun (i : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   M.index (|
                     result,
                     Binary.add (|
@@ -526,7 +526,7 @@ Definition base64_encode (InputBytes OutputElements : U32.t) (α : list Value.t)
             |)
           ]] in
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               result,
               M.call_closure (|
                 closure (base64_encode_elements (U32.Build_t 118)),

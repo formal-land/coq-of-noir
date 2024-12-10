@@ -416,7 +416,7 @@ pub struct Assign {
 '''
 def assign_to_coq(node) -> str:
     return alloc(
-        "M.assign (|\n" +
+        "M.write (|\n" +
         indent(
             read(lvalue_to_coq(node["lvalue"])) + ",\n" +
             read(expression_to_coq(node["expression"]))

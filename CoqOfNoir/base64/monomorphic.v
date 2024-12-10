@@ -295,7 +295,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
                   M.read (| BYTES_PER_CHUNK |),
                   fun (j : Value.t) =>
                   do~ [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.multiply (|
                         M.read (| slice |),
@@ -304,7 +304,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
                     |))
                   ]] in
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.add (|
                         M.read (| slice |),
@@ -341,7 +341,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
                   M.read (| BASE64_ELEMENTS_PER_CHUNK |),
                   fun (j : Value.t) =>
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       M.index (|
                         result,
                         Binary.add (|
@@ -383,7 +383,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
               M.read (| bytes_in_final_chunk |),
               fun (j : Value.t) =>
               do~ [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -392,7 +392,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
                 |))
               ]] in
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.add (|
                     M.read (| slice |),
@@ -423,7 +423,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
               M.read (| BYTES_PER_CHUNK |),
               fun (_ : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -460,7 +460,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
               M.read (| num_elements_in_final_chunk |),
               fun (i : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   M.index (|
                     result,
                     Binary.add (|
@@ -483,7 +483,7 @@ Definition base64_encode₁ (α : list Value.t) : M.t :=
             |)
           ]] in
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               result,
               M.call_closure (|
                 get_function "base64_encode_elements" 6,
@@ -537,7 +537,7 @@ Definition eq₂ (α : list Value.t) : M.t :=
           |),
           fun (i : Value.t) =>
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               result,
               Binary.and_ (|
                 M.read (| result |),
@@ -760,7 +760,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
                   M.read (| BASE64_ELEMENTS_PER_CHUNK |),
                   fun (j : Value.t) =>
                   do~ [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.multiply (|
                         M.read (| slice |),
@@ -769,7 +769,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
                     |))
                   ]] in
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       slice,
                       Binary.add (|
                         M.read (| slice |),
@@ -805,7 +805,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
                   M.read (| BYTES_PER_CHUNK |),
                   fun (j : Value.t) =>
                   [[
-                    M.alloc (M.assign (|
+                    M.alloc (M.write (|
                       M.index (|
                         result,
                         Binary.add (|
@@ -847,7 +847,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
               M.read (| base64_elements_in_final_chunk |),
               fun (j : Value.t) =>
               do~ [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -856,7 +856,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
                 |))
               ]] in
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.add (|
                     M.read (| slice |),
@@ -887,7 +887,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
               M.read (| BASE64_ELEMENTS_PER_CHUNK |),
               fun (_ : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   slice,
                   Binary.multiply (|
                     M.read (| slice |),
@@ -923,7 +923,7 @@ Definition base64_decode₃ (α : list Value.t) : M.t :=
               M.read (| num_bytes_in_final_chunk |),
               fun (i : Value.t) =>
               [[
-                M.alloc (M.assign (|
+                M.alloc (M.write (|
                   M.index (|
                     result,
                     Binary.add (|
@@ -989,7 +989,7 @@ Definition eq₄ (α : list Value.t) : M.t :=
           |),
           fun (i : Value.t) =>
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               result,
               Binary.and_ (|
                 M.read (| result |),
@@ -1210,7 +1210,7 @@ Definition base64_encode_elements₆ (α : list Value.t) : M.t :=
           Value.Integer IntegerKind.U32 118,
           fun (i : Value.t) =>
           [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               M.index (|
                 result,
                 M.read (| i |)
@@ -1427,7 +1427,7 @@ Definition base64_decode_elements₈ (α : list Value.t) : M.t :=
             |)
           |) ]] in
           do~ [[
-            M.alloc (M.assign (|
+            M.alloc (M.write (|
               M.index (|
                 result,
                 M.read (| i |)
@@ -1621,7 +1621,7 @@ Definition to_be_bytes₉ (α : list Value.t) : M.t :=
                         |))
                       ]] in
                       [[
-                        M.alloc (M.assign (|
+                        M.alloc (M.write (|
                           ok,
                           Value.Bool true
                         |))
